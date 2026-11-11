@@ -2,8 +2,15 @@
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#152839">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Schroefjes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}*,*::before,*::after{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}</style>
 <title>Schroefjes 3D</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -47,16 +54,21 @@ body{height:100%;overflow:hidden;background:var(--shelf);color:var(--ink);font-f
 .tray{display:grid;gap:12px;padding-block:12px 14px;background:var(--shelf);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
   border-bottom:3px solid #0e1d2a;position:relative;z-index:2}
-.boxes{display:flex;justify-content:center;gap:14px}
-.box{--c:#888;flex:1;max-width:150px;background:var(--c);border-radius:20px;padding:7px 7px 11px;
+.boxes{display:flex;justify-content:center;gap:10px}
+.box{--c:#888;flex:1;min-width:0;max-width:130px;background:var(--c);border-radius:18px;padding:6px 6px 10px;
   box-shadow:inset 0 -7px 0 rgba(0,0,0,.22),inset 0 2px 0 rgba(255,255,255,.35),0 4px 0 rgba(0,0,0,.3)}
-.lid{background:var(--lid);border-radius:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:10px 9px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.08)}
+.lid{background:var(--lid);border-radius:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:9px 7px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.08)}
 .hole{aspect-ratio:1;border-radius:50%;background:var(--hole);box-shadow:inset 0 3px 4px rgba(0,0,0,.55);display:grid;place-items:center}
 .hole .screw{--s:92%}
 .box.enter{animation:enter .38s cubic-bezier(.3,1.4,.5,1)}
 .box.leave{animation:leave .36s ease-in forwards}
 .box.gone{opacity:0}
 .box.empty{background:transparent;border:2px dashed var(--peg);box-shadow:none;display:grid;place-items:center;min-height:72px;color:var(--muted);font-size:14px}
+.box.locked{--c:#7d8a97;cursor:pointer;border:0;font-family:var(--f-display);color:var(--ink)}
+.box.locked .lid{background:#a9b4be;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;padding:8px 4px}
+.box.locked .plus{width:28px;height:28px;border-radius:9px;background:#45b649;color:#fff;display:grid;place-items:center;font-size:22px;font-weight:700;line-height:1;box-shadow:inset 0 -3px 0 rgba(0,0,0,.22)}
+.box.locked .ul{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#2e3a46}
+.box.locked:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 @keyframes enter{from{transform:translateY(-22px) scale(.85);opacity:0}}
 @keyframes leave{to{transform:translateY(-26px) scale(.82);opacity:0}}
 
@@ -141,13 +153,13 @@ body{height:100%;overflow:hidden;background:var(--shelf);color:var(--ink);font-f
     <p class="toast" id="toast"></p>
     <p class="hint" id="hint">Sleep om te draaien · knijp om te zoomen · tik op een schroef</p>
     <nav class="tools" aria-label="Boosters">
-      <button class="tool" id="t-boor" aria-label="Boor: draai een vastzittende schroef los">
-        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"><path d="M6 12h17a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3H6z"/><path d="M26 16h6M32 13l4 3-4 3"/><path d="M11 20l-2 12h7l2-12"/></svg><span class="n" id="n-boor">2</span>
+      <button class="tool" id="t-boor" aria-label="Boor: boor een extra reservegat">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"><path d="M6 12h17a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3H6z"/><path d="M26 16h6M32 13l4 3-4 3"/><path d="M11 20l-2 12h7l2-12"/></svg><span class="n" id="n-boor">1</span>
       </button>
       <button class="tool" id="t-hamer" aria-label="Hamer: sla een onderdeel eraf">
         <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"><path d="M9 9l9-3 8 8-3 9-14-14z"/><path d="M21 19l12 12a2.5 2.5 0 0 1-4 4L17 23"/></svg><span class="n" id="n-hamer">1</span>
       </button>
-      <button class="tool" id="t-kist" aria-label="Gereedschapskist: extra reserveplek">
+      <button class="tool" id="t-kist" aria-label="Gereedschapskist: ontgrendel een extra doos">
         <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"><rect x="5" y="14" width="30" height="20" rx="3"/><path d="M14 14v-4h12v4M5 22h30M18 20v4h4v-4"/></svg><span class="n" id="n-kist">1</span>
       </button>
       <button class="tool" id="t-bezem" aria-label="Bezem: veeg de reserve leeg">
@@ -238,7 +250,8 @@ const crossMats = COLORS.map(c=>new THREE.MeshStandardMaterial({color:new THREE.
 /* ---------- state ---------- */
 let level=1, parts=[], screws=[], boxes=[], buf=[], pendingSwaps=0, over=false, gen=0, nextBoxId=1, total=0, firstTap=true, params=null, fitRadius=4;
 const MAX_BUFFER=7;
-const START_BOOSTS={boor:2,hamer:1,kist:1,bezem:1};
+const START_BOOSTS={boor:1,hamer:1,kist:1,bezem:1};
+const OPEN_BOXES=2, TOTAL_BOXES=4;
 let boosts={...START_BOOSTS}, mode=null;
 const anims=[], falling=[];
 
@@ -417,13 +430,10 @@ function chooseColor(){
   for(const b of boxes) if(!b.leaving && b.color>=0){need[b.color]-=b.slots.filter(x=>!x).length; used.add(b.color);}
   const cand=[]; for(let c=0;c<C;c++) if(need[c]>0 && !used.has(c)) cand.push(c);
   if(!cand.length) return -1;
-  if(Math.random()<params.smart){
-    let best=cand[0], bs=-1;
-    for(const c of cand){const sc=inBuf[c]*10+acc[c]*2+Math.random(); if(sc>bs){bs=sc;best=c;}}
-    return best;
-  }
+  // purely random: the reserve does not influence which colour comes next
   return cand[Math.floor(Math.random()*cand.length)];
 }
+function lockedBox(){return {id:nextBoxId++,locked:true,color:-2,slots:[]};}
 function newBox(c){return c<0?{id:nextBoxId++,color:-1,slots:[null,null,null]}:{id:nextBoxId++,color:c,slots:[null,null,null],enter:true};}
 
 function toScreen(v){
@@ -497,8 +507,7 @@ function tapScrew(s,force){
 /* ---------- boosters ---------- */
 function setMode(m){
   mode = (mode===m) ? null : m;
-  if(mode==='boor') toast('Tik op een schroef om hem los te boren, ook als hij vastzit.');
-  else if(mode==='hamer') toast('Tik op een onderdeel om het eraf te slaan.');
+  if(mode==='hamer') toast('Tik op een onderdeel om het eraf te slaan.');
   renderTools();
 }
 function useHammer(p){
@@ -516,11 +525,20 @@ function useHammer(p){
   tryDetach(p.parent);
   render(); checkEnd();
 }
+function useBoor(){
+  if(over||boosts.boor<=0) return;
+  if(buf.length>=MAX_BUFFER){toast('De reserve heeft al het maximum aantal gaten.');return;}
+  buf.push(null); boosts.boor--; render(); toast('Extra gat geboord in de reserve.');
+  checkEnd();
+}
 function useKist(){
   if(over) return;
-  if(buf.length>=MAX_BUFFER){toast('De reserve heeft al het maximum aantal plekken.');return;}
-  buf.push(null); boosts.kist--; render(); toast('Extra reserveplek erbij.');
-  moveBufToBoxes(); checkEnd();
+  const i=boxes.findIndex(b=>b.locked);
+  if(i<0){toast('Alle dozen zijn al open.');return;}
+  if(boosts.kist<=0){toast('Je hebt geen gereedschapskist meer om een doos te openen.');return;}
+  const c=chooseColor();
+  if(c<0){toast('Er is geen nieuwe kleur meer nodig.');return;}
+  const nb=newBox(c); boxes[i]=nb; boosts.kist--; render(); pullFromBuffer(nb); checkEnd();
 }
 function useBezem(){
   if(over) return;
@@ -539,16 +557,16 @@ function useBezem(){
 }
 function canRescue(){
   if(boosts.bezem>0) return true;
-  if(boosts.kist>0 && buf.length<MAX_BUFFER) return true;
+  if(boosts.boor>0 && buf.length<MAX_BUFFER) return true;
   if(boosts.hamer>0 && parts.some(p=>p.attached&&p.parent)) return true;
-  if(boosts.boor>0 && screws.some(s=>!s.removed && boxes.some(b=>!b.leaving&&b.color===s.color&&b.slots.includes(null)))) return true;
+  if(boosts.kist>0 && boxes.some(b=>b.locked)) return true;
   return false;
 }
 function renderTools(){
   for(const k of ['boor','hamer','kist','bezem']){
     const btn=$('t-'+k), n=$('n-'+k);
     n.textContent=boosts[k]; n.classList.toggle('zero',boosts[k]<=0);
-    btn.disabled=over||boosts[k]<=0||(k==='kist'&&buf.length>=MAX_BUFFER);
+    btn.disabled=over||boosts[k]<=0||(k==='boor'&&buf.length>=MAX_BUFFER)||(k==='kist'&&!boxes.some(b=>b.locked));
     btn.classList.toggle('active',mode===k);
   }
 }
@@ -589,7 +607,7 @@ function completeBox(b){
 // an empty "Klaar" slot gets a colour again as soon as one is free to use
 function refillEmpty(){
   boxes.forEach((b,i)=>{
-    if(b.color>=0||b.leaving) return;
+    if(b.locked||b.color>=0||b.leaving) return;
     const c=chooseColor(); if(c<0) return;
     const nb=newBox(c); boxes[i]=nb; render(); pullFromBuffer(nb);
   });
@@ -659,6 +677,7 @@ function hideOverlay(){$('overlay').hidden=true;}
 function screwHtml(color,pop){return `<span class="screw${pop?' pop':''}" style="--c:${COLORS[color].hex}"></span>`;}
 function render(){
   $('boxes').innerHTML=boxes.map(b=>{
+    if(b.locked) return `<button class="box locked" data-unlock="1" aria-label="Doos ontgrendelen met de gereedschapskist"><div class="lid"><span class="plus">+</span><span class="ul">Ontgrendel</span></div></button>`;
     if(b.color<0) return `<div class="box empty">Klaar</div>`;
     const cls=['box'];
     if(b.enter) cls.push('enter');
@@ -689,7 +708,9 @@ function startLevel(L){
   fitRadius=sph.radius;
   shadow.position.set(0,box.min.y-0.5,0); shadow.scale.set(sph.radius*2.6,sph.radius*2.6,1);
   buf=new Array(BUFFER_SIZE).fill(null);
-  boxes=[]; boxes.push(newBox(chooseColor())); boxes.push(newBox(chooseColor()));
+  boxes=[];
+  for(let i=0;i<OPEN_BOXES;i++) boxes.push(newBox(chooseColor()));
+  for(let i=OPEN_BOXES;i<TOTAL_BOXES;i++) boxes.push(lockedBox());
   $('lvl').textContent='Level '+L;
   render();
   fitCamera(false);
@@ -713,11 +734,6 @@ cv.addEventListener('pointerup',e=>{
   for(const p of parts) if(p.attached) objs.push(p.mesh);
   const hits=pick.intersectObjects(objs,false);
   if(over) return;
-  if(mode==='boor'){
-    const h=hits.find(x=>x.object.userData.screw);
-    if(h && tapScrew(h.object.userData.screw,true)){boosts.boor--; mode=null; renderTools();}
-    return;
-  }
   if(mode==='hamer'){
     const h=hits[0]; if(!h) return;
     const s=h.object.userData.screw;
@@ -726,7 +742,18 @@ cv.addEventListener('pointerup',e=>{
   }
   if(hits.length && hits[0].object.userData.screw) tapScrew(hits[0].object.userData.screw);
 });
-$('t-boor').addEventListener('click',()=>setMode('boor'));
+$('t-boor').addEventListener('click',()=>{mode=null;useBoor();});
+$('boxes').addEventListener('click',e=>{if(e.target.closest('[data-unlock]')){mode=null;useKist();}});
+
+// hide the browser's address bar: fullscreen on the first touch (Android/desktop), standalone when installed
+function goFullscreen(){
+  const d=document.documentElement;
+  if(document.fullscreenElement||matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) return;
+  const req=d.requestFullscreen||d.webkitRequestFullscreen;
+  if(!req) return;
+  try{const p=req.call(d,{navigationUI:'hide'}); if(p&&p.catch) p.catch(()=>{});}catch(e){}
+}
+document.addEventListener('pointerup',goFullscreen,{once:true});
 $('t-hamer').addEventListener('click',()=>setMode('hamer'));
 $('t-kist').addEventListener('click',()=>{mode=null;useKist();});
 $('t-bezem').addEventListener('click',()=>{mode=null;useBezem();});
