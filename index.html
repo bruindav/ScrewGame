@@ -199,7 +199,8 @@ const COLORS = [
   {name:'paars',    hex:'#8b5cf6'},
   {name:'oranje',   hex:'#f97316'},
   {name:'roze',     hex:'#ec4899'},
-  {name:'turkoois', hex:'#14b8a6'}
+  {name:'turkoois', hex:'#14b8a6'},
+  {name:'bruin',    hex:'#8b5a2b'}
 ];
 const PART_COLORS = [0xf2deb0,0xf5b892,0xa9dcc4,0xc9bcec,0xa3cbe9,0xf2b0c0,0xe9e2d0,0xd6e6a2];
 const BUFFER_SIZE = 5;
@@ -258,7 +259,7 @@ const anims=[], falling=[];
 /* ---------- level generation ---------- */
 function levelParams(L){
   return {
-    colors: Math.min(8, 3 + Math.floor((L-1)/2)),
+    colors: Math.min(COLORS.length, 4 + Math.floor((L-1)/2)),
     layers: Math.min(3, 1 + Math.floor(L/3)),
     knobs:  Math.min(6, Math.floor((L+1)/2)),
     smart:  L<=3 ? 1 : Math.max(0.35, 1 - (L-3)*0.08)
