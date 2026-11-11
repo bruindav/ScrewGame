@@ -67,7 +67,7 @@ body{height:100%;overflow:hidden;background:var(--shelf);color:var(--ink);font-f
 .box.locked{--c:#7d8a97;cursor:pointer;border:0;font-family:var(--f-display);color:var(--ink)}
 .box.locked .lid{background:#a9b4be;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;padding:8px 4px}
 .box.locked .plus{width:28px;height:28px;border-radius:9px;background:#45b649;color:#fff;display:grid;place-items:center;font-size:22px;font-weight:700;line-height:1;box-shadow:inset 0 -3px 0 rgba(0,0,0,.22)}
-.box.locked .ul{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#2e3a46}
+.box.locked .ul{font-size:clamp(8px,2.4vw,11px);font-weight:600;letter-spacing:0;text-transform:uppercase;color:#2e3a46;max-width:100%;overflow:hidden;text-overflow:clip;white-space:nowrap}
 .box.locked:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 @keyframes enter{from{transform:translateY(-22px) scale(.85);opacity:0}}
 @keyframes leave{to{transform:translateY(-26px) scale(.82);opacity:0}}
