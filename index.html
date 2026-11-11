@@ -256,124 +256,182 @@ const OPEN_BOXES=2, TOTAL_BOXES=4;
 let boosts={...START_BOOSTS}, mode=null;
 const anims=[], falling=[];
 
-/* ---------- level generation ---------- */
+/* ---------- level generation: themed toy models ---------- */
+const THEMES=['auto','huis','figuur'];
+const THEME_NAMES={auto:'speelgoedauto',huis:'poppenhuis',figuur:'speelgoedpoppetje'};
 function levelParams(L){
   return {
     colors: Math.min(COLORS.length, 4 + Math.floor((L-1)/2)),
-    layers: Math.min(3, 1 + Math.floor(L/3)),
-    knobs:  Math.min(6, Math.floor((L+1)/2)),
-    smart:  L<=3 ? 1 : Math.max(0.35, 1 - (L-3)*0.08)
+    bonus:  Math.floor((L-1)/3),          // extra screws on bigger panels as levels go up
+    theme:  THEMES[(L-1)%THEMES.length]
   };
 }
 
-function platePoints(hu,hv,R){
-  const iu=hu-0.3, iv=hv-0.3;
-  if(iu>=0.25 && iv>=0.25){
-    const c=[[iu,iv],[-iu,-iv],[-iu,iv],[iu,-iv]];
-    return c.slice(0, 2+Math.floor(R()*3));
+function makeBuilder(bonus){
+  const parts=[], screws=[], AX={x:0,y:1,z:2};
+  const add=p=>{p.children=[];p.screws=[];if(p.parent)p.parent.children.push(p);parts.push(p);return p;};
+  const screwAt=(p,lp,ln)=>{
+    const s={part:p,pos:lp.clone().applyQuaternion(p.quat).add(p.center),normal:ln.clone().applyQuaternion(p.quat).normalize(),color:-1,removed:false};
+    p.screws.push(s); screws.push(s);
+  };
+  const cnt=b=>b>=2?b+bonus:b;
+  // spread n screws over a box face (farthest-point sampling on a grid)
+  function faceScrews(p,face,base){
+    const a=AX[face[1]], sg=face[0]==='-'?-1:1, u=(a+1)%3, v=(a+2)%3;
+    const half=[p.size.x/2,p.size.y/2,p.size.z/2], hu=half[u], hv=half[v];
+    const iu=Math.min(0.27,hu*0.45), iv=Math.min(0.27,hv*0.45);
+    const nu=Math.max(1,Math.floor(2*hu/0.55)), nv=Math.max(1,Math.floor(2*hv/0.55));
+    const lin=(n,h,i)=>n===1?[0]:Array.from({length:n},(_,k)=>-(h-i)+k*2*(h-i)/(n-1));
+    const grid=[]; for(const x of lin(nu,hu,iu)) for(const y of lin(nv,hv,iv)) grid.push([x,y]);
+    const n=Math.min(cnt(base),grid.length), pick=[];
+    if(n===1) pick.push(grid.reduce((b,g)=>Math.hypot(g[0],g[1])<Math.hypot(b[0],b[1])?g:b));
+    else{
+      pick.push(grid.reduce((b,g)=>(g[0]+g[1]>b[0]+b[1])?g:b));
+      while(pick.length<n){
+        let best=null,bd=-1;
+        for(const g of grid){ if(pick.includes(g)) continue; const d=Math.min(...pick.map(q=>Math.hypot(q[0]-g[0],q[1]-g[1]))); if(d>bd+1e-6){bd=d;best=g;} }
+        pick.push(best);
+      }
+    }
+    for(const [cu,cv] of pick){
+      const lp=new V3(), ln=new V3();
+      lp.setComponent(a,sg*half[a]); lp.setComponent(u,cu); lp.setComponent(v,cv); ln.setComponent(a,sg);
+      screwAt(p,lp,ln);
+    }
   }
-  if(iu>=0.25) return [[iu,0],[-iu,0]];
-  if(iv>=0.25) return [[0,iv],[0,-iv]];
-  return [[0,0]];
+  function capScrews(p,sg,n){
+    n=cnt(n);
+    for(let k=0;k<n;k++){
+      const rr=n===1?0:p.r*0.72, ang=k*2*Math.PI/n+Math.PI/4;
+      screwAt(p,new V3(Math.cos(ang)*rr,sg*p.h/2,Math.sin(ang)*rr),new V3(0,sg,0));
+    }
+  }
+  return {
+    parts, screws,
+    box(o){
+      const q=new THREE.Quaternion();
+      if(o.rot) q.setFromEuler(new THREE.Euler(...o.rot.map(d=>d*Math.PI/180)));
+      const p=add({kind:'box',name:o.name,color:o.color,center:new V3(...o.pos),size:new V3(...o.size),quat:q,parent:o.parent||null});
+      for(const f in (o.screws||{})) faceScrews(p,f,o.screws[f]);
+      return p;
+    },
+    cyl(o){
+      const q=new THREE.Quaternion().setFromUnitVectors(UP,new V3(...(o.axis||[0,1,0])).normalize());
+      const p=add({kind:'cyl',name:o.name,color:o.color,center:new V3(...o.pos),r:o.r,h:o.h,quat:q,parent:o.parent||null});
+      if(o.screws) capScrews(p,1,o.screws);
+      if(o.back) capScrews(p,-1,o.back);
+      return p;
+    },
+    sphere(o){
+      const p=add({kind:'sphere',name:o.name,color:o.color,center:new V3(...o.pos),r:o.r,quat:new THREE.Quaternion(),parent:o.parent||null});
+      for(const d of o.dirs){const n=new V3(...d).normalize(); screwAt(p,n.clone().multiplyScalar(o.r),n);}
+      return p;
+    }
+  };
 }
 
+const GLASS=0x9fd3ee;
+const MODELS={
+  auto(B,R,pick){
+    const paint=pick([0xf2c94c,0xe8604c,0x5aa9e6,0x7bc47f,0xf29bc4]);
+    const ch=B.box({name:'chassis',color:0x4a4f57,pos:[0,0.45,0],size:[4.4,0.5,2.2],screws:{'-y':3,'+x':1,'-x':1}});
+    const body=B.box({name:'carrosserie',color:paint,pos:[0,1.0,0],size:[4.2,0.7,2.0],parent:ch,screws:{'+z':2,'-z':2,'+y':2}});
+    const cab=B.box({name:'cabine',color:paint,pos:[-0.3,1.75,0],size:[2.2,0.8,1.8],parent:body,screws:{'+x':1,'-x':1}});
+    B.box({name:'dak',color:0xf6f1e4,pos:[-0.3,2.22,0],size:[2.4,0.14,1.95],parent:cab,screws:{'+y':3}});
+    B.box({name:'voorruit',color:GLASS,pos:[0.83,1.75,0],size:[0.06,0.6,1.5],parent:cab,screws:{'+x':2}});
+    B.box({name:'achterruit',color:GLASS,pos:[-1.43,1.75,0],size:[0.06,0.55,1.4],parent:cab,screws:{'-x':2}});
+    for(const z of [1,-1]) for(const x of [-0.85,0.25])
+      B.box({name:'zijruit',color:GLASS,pos:[x,1.75,z*0.93],size:[0.85,0.5,0.06],parent:cab,screws:{[z>0?'+z':'-z']:1}});
+    B.box({name:'voorbumper',color:0xd9dde2,pos:[2.33,0.6,0],size:[0.26,0.36,2.3],parent:ch,screws:{'+x':2}});
+    B.box({name:'achterbumper',color:0xd9dde2,pos:[-2.33,0.6,0],size:[0.26,0.36,2.3],parent:ch,screws:{'-x':2}});
+    for(const z of [0.62,-0.62]){
+      B.cyl({name:'koplamp',color:0xfff4c2,pos:[2.15,1.05,z],r:0.2,h:0.1,axis:[1,0,0],parent:body,screws:1});
+      B.cyl({name:'achterlicht',color:0xe5484d,pos:[-2.15,1.05,z],r:0.17,h:0.1,axis:[-1,0,0],parent:body,screws:1});
+    }
+    for(const x of [1.4,-1.4]) for(const z of [1,-1]){
+      const w=B.cyl({name:'wiel',color:0x2b2f36,pos:[x,0.45,z*1.28],r:0.55,h:0.35,axis:[0,0,z],parent:ch,screws:1});
+      B.cyl({name:'wieldop',color:0xd9dde2,pos:[x,0.45,z*1.49],r:0.28,h:0.08,axis:[0,0,z],parent:w,screws:1});
+    }
+  },
+  huis(B,R,pick){
+    const wall=pick([0xf3e2c0,0xcfe3f0,0xf6c9b8,0xd9ecc9]), roof=pick([0xc0504d,0x5b6b84,0x8a5a44]);
+    const base=B.box({name:'fundering',color:0x9aa3ad,pos:[0,0.15,0],size:[4.4,0.3,3.4],screws:{'-y':2,'+x':1,'-x':1,'-z':1}});
+    const walls=B.box({name:'muren',color:wall,pos:[0,1.35,0],size:[4,2.1,3],parent:base,screws:{'+z':3,'-z':3,'+x':2,'-x':2,'+y':2}});
+    const roofA=B.box({name:'dakvlak',color:roof,pos:[0,3.0,0.8],size:[4.5,0.18,2.0],rot:[35,0,0],parent:walls,screws:{'+y':3}});
+    const roofB=B.box({name:'dakvlak',color:roof,pos:[0,3.0,-0.8],size:[4.5,0.18,2.0],rot:[-35,0,0],parent:walls,screws:{'+y':3}});
+    B.cyl({name:'nok',color:0x6b4a3a,pos:[0,3.62,0],r:0.14,h:4.6,axis:[1,0,0],parent:roofA,screws:1,back:1});
+    B.box({name:'schoorsteen',color:0xa0574a,pos:[1.2,3.55,-0.7],size:[0.45,1.0,0.45],parent:roofB,screws:{'+x':1,'+y':1}});
+    B.box({name:'voordeur',color:0x8b5a2b,pos:[0.95,0.98,1.53],size:[0.8,1.35,0.06],parent:walls,screws:{'+z':2}});
+    B.box({name:'raam',color:GLASS,pos:[-0.95,1.65,1.53],size:[1.0,0.8,0.06],parent:walls,screws:{'+z':2}});
+    B.box({name:'luik',color:roof,pos:[-1.6,1.65,1.55],size:[0.25,0.85,0.08],parent:walls,screws:{'+z':1}});
+    B.box({name:'luik',color:roof,pos:[-0.3,1.65,1.55],size:[0.25,0.85,0.08],parent:walls,screws:{'+z':1}});
+    B.box({name:'bloembak',color:0x7a4b2a,pos:[-0.95,1.17,1.62],size:[1.1,0.18,0.24],parent:walls,screws:{'+z':1}});
+    for(const s of [1,-1]) for(const z of [0.7,-0.7])
+      B.box({name:'zijraam',color:GLASS,pos:[s*2.03,1.6,z],size:[0.06,0.75,0.8],parent:walls,screws:{[s>0?'+x':'-x']:1}});
+    for(const x of [-1,1])
+      B.box({name:'achterraam',color:GLASS,pos:[x,1.6,-1.53],size:[1.0,0.8,0.06],parent:walls,screws:{'-z':2}});
+    B.box({name:'stoep',color:0xb9c0c7,pos:[0.95,0.38,1.95],size:[1.1,0.16,0.5],parent:base,screws:{'+y':2}});
+  },
+  figuur(B,R,pick){
+    const skin=0xf6d2b0, shirt=pick([0xe8604c,0x5aa9e6,0x7bc47f,0xf2c94c,0xc9bcec]), pants=pick([0x3b5b8c,0x5a4a3a,0x444b55]), hat=pick([0x2b2f36,0xc0504d,0x2f7f6f]);
+    const torso=B.box({name:'romp',color:0xe9e2d0,pos:[0,2.1,0],size:[1.6,1.8,1.0],screws:{'+z':2,'-z':2,'+x':1,'-x':1}});
+    B.box({name:'shirt',color:shirt,pos:[0,2.2,0.53],size:[1.5,1.4,0.06],parent:torso,screws:{'+z':3}});
+    B.box({name:'rugpand',color:shirt,pos:[0,2.2,-0.53],size:[1.5,1.4,0.06],parent:torso,screws:{'-z':2}});
+    B.box({name:'riem',color:0x3a2a1c,pos:[0,1.3,0],size:[1.7,0.22,1.12],parent:torso,screws:{'+z':1,'-z':1}});
+    for(const s of [1,-1]){
+      const leg=B.box({name:'broekspijp',color:pants,pos:[s*0.42,0.6,0],size:[0.62,1.2,0.78],parent:torso,screws:{'+z':2,'-z':1,[s>0?'+x':'-x']:1}});
+      B.box({name:'schoen',color:0x2b2f36,pos:[s*0.42,-0.12,0.12],size:[0.72,0.26,1.02],parent:leg,screws:{'+z':1,'-y':1}});
+      const arm=B.box({name:'arm',color:skin,pos:[s*1.05,2.35,0],size:[0.46,1.3,0.52],parent:torso,screws:{[s>0?'+x':'-x']:1,'+z':1}});
+      B.box({name:'mouw',color:shirt,pos:[s*1.05,2.8,0],size:[0.58,0.5,0.64],parent:arm,screws:{[s>0?'+x':'-x']:1,'+z':1}});
+      B.sphere({name:'hand',color:skin,pos:[s*1.05,1.55,0],r:0.3,parent:arm,dirs:[[s,0,0],[0,-1,0]]});
+    }
+    const head=B.box({name:'hoofd',color:skin,pos:[0,3.55,0],size:[1.15,1.0,1.0],parent:torso,screws:{'+x':1,'-x':1,'+y':2}});
+    for(const x of [0.25,-0.25]) B.cyl({name:'oog',color:0x2b2f36,pos:[x,3.68,0.53],r:0.2,h:0.06,axis:[0,0,1],parent:head,screws:1});
+    B.box({name:'mond',color:0xe5484d,pos:[0,3.28,0.525],size:[0.5,0.12,0.05],parent:head,screws:{'+z':1}});
+    const brim=B.cyl({name:'hoedrand',color:hat,pos:[0,4.11,0],r:0.75,h:0.12,parent:head,screws:3});
+    B.cyl({name:'hoed',color:hat,pos:[0,4.42,0],r:0.45,h:0.5,parent:brim,screws:1});
+  }
+};
+
 function generate(L){
-  const R = rng(L*7919+101);
-  const P = levelParams(L);
-  const W=3+R()*1.2, H=2.2+R()*0.8, D=2.4+R()*0.8;
-  const half=[W/2,H/2,D/2];
-  const defs=[], sdefs=[];
-  const pc=()=>PART_COLORS[Math.floor(R()*PART_COLORS.length)];
-  const AX=[new V3(1,0,0),new V3(0,1,0),new V3(0,0,1)];
-  const addScrew=(part,pos,n)=>{const s={part,pos,normal:n.clone(),color:-1,removed:false};part.screws.push(s);sdefs.push(s);};
+  const R=rng(L*7919+101), P=levelParams(L);
+  const pick=a=>a[Math.floor(R()*a.length)];
+  const B=makeBuilder(P.bonus);
+  MODELS[P.theme](B,R,pick);
+  const defs=B.parts, sdefs=B.screws;
 
-  const core={kind:'box',center:new V3(),size:new V3(W,H,D),color:pc(),parent:null,children:[],screws:[]};
-  defs.push(core);
-
-  for(let a=0;a<3;a++) for(const sg of [1,-1]){
-    const u=(a+1)%3, v=(a+2)%3;
-    const n=AX[a].clone().multiplyScalar(sg), uV=AX[u], vV=AX[v];
-    const base=half[a], hu=half[u], hv=half[v];
-    const pt=(off,cu,cv)=>n.clone().multiplyScalar(off).addScaledVector(uV,cu).addScaledVector(vV,cv);
-
-    // screws straight into the core body
-    const placed=[];
-    const ncs=1+(R()<0.5?1:0);
-    for(let i=0,tries=0;i<ncs && tries<20;tries++){
-      const cu=(R()*2-1)*(hu-0.45), cv=(R()*2-1)*(hv-0.45);
-      if(placed.some(p=>Math.hypot(p[0]-cu,p[1]-cv)<0.7)) continue;
-      placed.push([cu,cv]); addScrew(core,pt(base,cu,cv),n); i++;
-    }
-
-    // layer 0: one or two panels covering the face
-    const m=0.06, g=0.04;
-    let rects=[{cu:0,cv:0,hu:hu-m,hv:hv-m}];
-    if(R()<0.65){
-      const r=rects[0];
-      if(r.hu>=r.hv){
-        const x0=-r.hu+2*r.hu*(0.35+R()*0.3);
-        rects=[{cu:(-r.hu+x0-g)/2,cv:0,hu:(x0-g+r.hu)/2,hv:r.hv},{cu:(x0+g+r.hu)/2,cv:0,hu:(r.hu-x0-g)/2,hv:r.hv}];
-      }else{
-        const y0=-r.hv+2*r.hv*(0.35+R()*0.3);
-        rects=[{cu:0,cv:(-r.hv+y0-g)/2,hu:r.hu,hv:(y0-g+r.hv)/2},{cu:0,cv:(y0+g+r.hv)/2,hu:r.hu,hv:(r.hv-y0-g)/2}];
-      }
-    }
-    const nl=(a===1&&sg===-1)?1:P.layers;
-    let layer=[];
-    for(let k=0;k<nl;k++){
-      let next=[];
-      if(k===0) next=rects.map(r=>Object.assign({},r,{parent:core}));
-      else{
-        const pool=shuffle(layer.slice(),R);
-        const cnt=Math.min(pool.length,1+(R()<0.55?1:0));
-        for(let i=0;i<cnt;i++){
-          const p=pool[i];
-          const chu=Math.max(0.38,p.hu*(0.45+R()*0.35)), chv=Math.max(0.38,p.hv*(0.45+R()*0.35));
-          if(chu>p.hu||chv>p.hv) continue;
-          next.push({cu:p.cu+(R()*2-1)*(p.hu-chu),cv:p.cv+(R()*2-1)*(p.hv-chv),hu:chu,hv:chv,parent:p.part});
-        }
-      }
-      if(!next.length) break;
-      for(const r of next){
-        const size=new V3(); size.setComponent(a,T); size.setComponent(u,r.hu*2); size.setComponent(v,r.hv*2);
-        const top=base+T*(k+1);
-        const part={kind:'box',center:pt(base+T*k+T/2,r.cu,r.cv),size,color:pc(),parent:r.parent,children:[],screws:[],rect:r,top,pt,n};
-        r.parent.children.push(part); defs.push(part); r.part=part;
-        for(const [du,dv] of platePoints(r.hu,r.hv,R)) addScrew(part,pt(top,r.cu+du,r.cv+dv),n);
-      }
-      layer=next;
-    }
+  // centre the model on the origin
+  const bb=new THREE.Box3();
+  for(const p of defs){
+    const e=p.kind==='box'?Math.max(p.size.x,p.size.y,p.size.z)/2:Math.max(p.r,(p.h||0)/2);
+    bb.expandByPoint(p.center.clone().addScalar(-e)); bb.expandByPoint(p.center.clone().addScalar(e));
   }
-
-  // knobs on outermost panels
-  const cands=shuffle(defs.filter(p=>p.kind==='box'&&p.parent&&!p.children.length&&Math.min(p.rect.hu,p.rect.hv)>=0.45),R);
-  for(let i=0;i<Math.min(P.knobs,cands.length);i++){
-    const p=cands[i], r=Math.min(0.55,Math.min(p.rect.hu,p.rect.hv)*0.75), h=0.32;
-    const knob={kind:'cyl',r,h,n:p.n,center:p.pt(p.top+h/2,p.rect.cu,p.rect.cv),color:pc(),parent:p,children:[],screws:[]};
-    p.children.push(knob); defs.push(knob);
-    addScrew(knob,p.pt(p.top+h,p.rect.cu,p.rect.cv),p.n);
-  }
+  const c=bb.getCenter(new V3());
+  for(const p of defs) p.center.sub(c);
+  for(const s of sdefs) s.pos.sub(c);
 
   // total must be a multiple of 3
   while(sdefs.length%3){
-    const c=sdefs.filter(s=>s.part.screws.length>1);
-    const s=c.length?c[Math.floor(R()*c.length)]:sdefs[sdefs.length-1];
+    const cand=sdefs.filter(s=>s.part.screws.length>1);
+    const s=cand.length?cand[Math.floor(R()*cand.length)]:sdefs[sdefs.length-1];
     sdefs.splice(sdefs.indexOf(s),1); s.part.screws.splice(s.part.screws.indexOf(s),1);
   }
   const triples=sdefs.length/3, list=[];
-  for(let i=0;i<triples;i++){const c=i%P.colors;list.push(c,c,c);}
-  shuffle(list,R).forEach((c,i)=>sdefs[i].color=c);
+  for(let i=0;i<triples;i++){const k=i%P.colors;list.push(k,k,k);}
+  shuffle(list,R).forEach((k,i)=>sdefs[i].color=k);
   return {parts:defs,screws:sdefs,P};
 }
 
 /* ---------- build meshes ---------- */
 function buildPart(p){
-  const geo = p.kind==='box' ? new THREE.BoxGeometry(p.size.x,p.size.y,p.size.z) : new THREE.CylinderGeometry(p.r,p.r*1.05,p.h,32);
-  const mat = new THREE.MeshStandardMaterial({color:p.color,roughness:0.62,metalness:0});
+  const geo = p.kind==='box' ? new THREE.BoxGeometry(p.size.x,p.size.y,p.size.z)
+            : p.kind==='cyl' ? new THREE.CylinderGeometry(p.r,p.r,p.h,32)
+            : new THREE.SphereGeometry(p.r,24,16);
+  const glass = p.color===GLASS;
+  const mat = new THREE.MeshStandardMaterial({color:p.color,roughness:glass?0.15:0.6,metalness:glass?0.1:0});
   const mesh = new THREE.Mesh(geo,mat);
-  mesh.position.copy(p.center);
-  if(p.kind==='cyl') mesh.quaternion.setFromUnitVectors(UP,p.n);
-  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,30),edgeMat));
+  mesh.position.copy(p.center); mesh.quaternion.copy(p.quat);
+  if(p.kind!=='sphere') mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,30),edgeMat));
   p.mesh=mesh; p.attached=true; root.add(mesh);
 }
 function buildScrew(s){
@@ -580,6 +638,7 @@ function tryDetach(p){
   }
 }
 function dropPart(p){
+  if(p.name && p.parent && !over) toast(p.name.charAt(0).toUpperCase()+p.name.slice(1)+' eraf!');
   const dir=p.center.lengthSq()<1e-4?new V3():p.center.clone().normalize();
   p.vel=dir.multiplyScalar(2.4).add(new V3((Math.random()-.5),2,(Math.random()-.5)));
   p.spinV=new V3((Math.random()-.5)*5,(Math.random()-.5)*5,(Math.random()-.5)*5);
@@ -655,7 +714,7 @@ function win(){
   store('schroefjes.level',String(level+1));
   const g=gen;
   setTimeout(()=>{ if(g!==gen) return;
-    showOverlay('Level '+level+' voltooid','Alles los!',`${total} schroeven eruit gedraaid en ${parts.length} onderdelen gesloopt.`,'Volgende level',()=>startLevel(level+1),'Nog een keer',()=>startLevel(level));
+    showOverlay('Level '+level+' voltooid','Alles los!',`De ${THEME_NAMES[params.theme]} is helemaal uit elkaar: ${total} schroeven en ${parts.length} onderdelen.`,'Volgende level',()=>startLevel(level+1),'Nog een keer',()=>startLevel(level));
   },reduce?100:900);
 }
 function lose(){
@@ -790,5 +849,6 @@ const boot=d=>{resize(); startLevel((d&&d.level)||parseInt(store('schroefjes.lev
 window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
 })();
 </script>
+
 </body>
 </html>
