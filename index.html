@@ -249,6 +249,9 @@ const hitMat   = new THREE.MeshBasicMaterial({visible:false});
 const edgeMat  = new THREE.LineBasicMaterial({color:0x14212d,transparent:true,opacity:0.22});
 const screwMats = COLORS.map(c=>new THREE.MeshStandardMaterial({color:c.hex,roughness:0.32,metalness:0.12}));
 const crossMats = COLORS.map(c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c.hex).multiplyScalar(0.32),roughness:0.6}));
+// screws that sit under or against another part are drawn see-through
+const screwMatsDim = COLORS.map(c=>new THREE.MeshStandardMaterial({color:c.hex,roughness:0.32,metalness:0.12,transparent:true,opacity:0.3,depthWrite:false}));
+const crossMatsDim = COLORS.map(c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c.hex).multiplyScalar(0.32),roughness:0.6,transparent:true,opacity:0.3,depthWrite:false}));
 
 /* ---------- state ---------- */
 let level=1, parts=[], screws=[], boxes=[], buf=[], pendingSwaps=0, over=false, gen=0, nextBoxId=1, total=0, firstTap=true, params=null, fitRadius=4;
@@ -445,14 +448,14 @@ const MODELS={
       deco:[{shape:'box',pos:[0,0.22,0.15],size:[0.34,0.4,0.05]},{shape:'box',pos:[0,-0.16,0],size:[0.28,0.3,0.28]}]});
     const sofa=B.box({name:'bank',color:fab,pos:[1.05,0.5,0.4],size:[1.2,0.36,0.6],round:0.1,parent:base,faces:{'+y':1},
       deco:[{shape:'box',pos:[0,0.28,-0.24],size:[1.2,0.4,0.14],round:0.06}]});
-    B.box({name:'kussen',color:0xf2c94c,pos:[1.4,0.78,0.35],size:[0.32,0.3,0.12],round:0.06,parent:sofa,faces:{'+z':1}});
+    B.box({name:'kussen',color:0xf2c94c,pos:[1.4,0.8,0.47],size:[0.34,0.3,0.12],round:0.06,parent:sofa,faces:{'+y':1}});
     B.box({name:'kast',color:wood,pos:[1.2,0.8,-1.15],size:[0.9,1.0,0.4],round:0.03,parent:back,faces:{'+z':2}});
     const upper=B.box({name:'zoldervloer',color:0xd8c3a5,pos:[0,1.6,0],size:[3.76,0.1,2.76],round:0.02,parent:back,
       pts:[[-0.9,1.65,-0.3,0,1,0],[1.0,1.65,-0.55,0,1,0],[0,1.65,0.9,0,1,0]]});
     const bed=B.box({name:'bed',color:0xf4f0e6,pos:[-0.9,1.8,-0.3],size:[1.4,0.3,0.9],round:0.08,parent:upper,faces:{'+y':2},
       deco:[{shape:'box',pos:[-0.55,0.17,0],size:[0.3,0.1,0.6],round:0.04,color:fab}]});
     B.box({name:'deken',color:fab,pos:[-0.75,1.97,-0.3],size:[0.95,0.05,0.92],round:0.02,parent:bed,faces:{'+y':1}});
-    B.box({name:'speelgoedkist',color:roofC,pos:[1.0,1.83,-0.55],size:[0.6,0.36,0.42],round:0.04,parent:upper,faces:{'+y':1,'+z':1}});
+    B.box({name:'speelgoedkist',color:roofC,pos:[1.0,1.83,-0.55],size:[0.6,0.36,0.42],round:0.04,parent:upper,faces:{'+y':2}});
     // roof
     const roofA=B.box({name:'dakvlak',color:roofC,pos:[0,3.05,0.82],size:[4.5,0.18,2.05],round:0.06,rot:[35,0,0],parent:front,
       lpts:[[-1.05,0.09,0,0,1,0],[1.05,0.09,0,0,1,0],[0,0.09,-0.65,0,1,0]]});
@@ -606,6 +609,7 @@ function buildScrew(s){
   const c1=new THREE.Mesh(crossGeo,crossMats[s.color]); c1.position.y=0.112; c1.rotation.y=Math.PI/4;
   const c2=c1.clone(); c2.rotation.y=-Math.PI/4;
   spin.add(head,c1,c2); spin.rotation.y=Math.random()*Math.PI;
+  s.head=head; s.c1=c1; s.c2=c2; s.dim=false;
   const hit=new THREE.Mesh(hitGeo,hitMat); hit.position.y=0.1; hit.userData.screw=s;
   g.add(spin,hit); g.position.copy(s.pos); g.quaternion.setFromUnitVectors(UP,s.normal);
   s.group=g; s.spin=spin; s.hit=hit; root.add(g);
@@ -638,13 +642,34 @@ new ResizeObserver(resize).observe(stage);
 
 /* ---------- game logic ---------- */
 const rc=new THREE.Raycaster();
+// A screw is blocked when any other attached part lies over or against its head:
+// rays come in along the screw axis over the whole head footprint (centre + ring).
+const FOOT=[[0,0]];
+for(let k=0;k<8;k++){const a=k*Math.PI/4; FOOT.push([Math.cos(a)*0.18,Math.sin(a)*0.18]);}
+let blockMeshes=null;
+function invalidateBlockers(){blockMeshes=null;}
 function isBlocked(s){
-  const dir=s.normal.clone().negate();
-  rc.set(s.pos.clone().addScaledVector(s.normal,30),dir);
-  rc.near=0; rc.far=30-0.02;
-  const meshes=[];
-  for(const p of parts) if(p.attached && p!==s.part) meshes.push(p.mesh);
-  return rc.intersectObjects(meshes,true).length>0;
+  if(!blockMeshes){blockMeshes=[]; for(const p of parts) if(p.attached) blockMeshes.push(p.mesh);}
+  const meshes=blockMeshes.filter(m=>m!==s.part.mesh);
+  const n=s.normal, ref=Math.abs(n.y)<0.9?new V3(0,1,0):new V3(1,0,0);
+  const t1=ref.clone().cross(n).normalize(), t2=n.clone().cross(t1), dir=n.clone().negate();
+  for(const [a,b] of FOOT){
+    const o=s.pos.clone().addScaledVector(t1,a).addScaledVector(t2,b).addScaledVector(n,30);
+    rc.set(o,dir); rc.near=0; rc.far=30-0.03;
+    if(rc.intersectObjects(meshes,true).length) return true;
+  }
+  return false;
+}
+function refreshDim(){
+  invalidateBlockers();
+  for(const s of screws){
+    if(s.removed||!s.head) continue;
+    const b=isBlocked(s);
+    if(b===s.dim) continue;
+    s.dim=b;
+    s.head.material=(b?screwMatsDim:screwMats)[s.color];
+    s.c1.material=s.c2.material=(b?crossMatsDim:crossMats)[s.color];
+  }
 }
 
 function chooseColor(){
@@ -714,7 +739,7 @@ function tapScrew(s,force){
   if(dest.box){dest.box.slots[dest.j]=slot;slotId=`s-${dest.box.id}-${dest.j}`;}
   else{buf[dest.k]=slot;slotId=`s-buf-${dest.k}`;}
   const p=s.part; p.screws.splice(p.screws.indexOf(s),1);
-  tryDetach(p);
+  tryDetach(p); refreshDim();
   render();
 
   const g=s.group, start=g.position.clone();
@@ -747,7 +772,7 @@ function useHammer(p){
     setTimeout(()=>{if(g===gen) dropPart(q);},reduce?0:60);
   }
   boosts.hamer--; mode=null;
-  tryDetach(p.parent);
+  tryDetach(p.parent); refreshDim();
   render(); checkEnd();
 }
 function useBoor(){
@@ -930,6 +955,7 @@ function startLevel(L){
   const lv=generate(L);
   parts=lv.parts; screws=lv.screws; params=lv.P; total=screws.length;
   parts.forEach(buildPart); screws.forEach(buildScrew);
+  root.updateMatrixWorld(true); refreshDim();
   const box=new THREE.Box3().setFromObject(root), sph=box.getBoundingSphere(new THREE.Sphere());
   fitRadius=sph.radius;
   shadow.position.set(0,box.min.y-0.5,0); shadow.scale.set(sph.radius*2.6,sph.radius*2.6,1);
