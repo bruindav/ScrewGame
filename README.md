@@ -1,6 +1,6 @@
 # Schroefjes 3D (ScrewGame)
 
-Een 3D-schroevenpuzzel in de browser, gebouwd met Three.js. Per level schroef je een speelgoedmodel uit elkaar: een auto, een poppenhuis of een poppetje.
+Een 3D-schroevenpuzzel in de browser, gebouwd met Three.js. Per level schroef je een speelgoedmodel uit elkaar: een auto, een poppenhuis, een poppetje, een boot, een olifant of een popcornmachine. Na elk level zie je het model nog één keer, waarna alle schroeven er tegelijk uit vliegen met vuurwerk.
 
 **Spelen:** https://bruindav.github.io/ScrewGame/
 
